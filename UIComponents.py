@@ -1,6 +1,10 @@
-from ServerOperations import stop_server, check_server_status, create_server, get_configurations, get_images, delete_server
-from tkinter import messagebox, ttk, Tk
+from ServerOperations import stop_server, check_server_status, create_server, get_configurations, get_images, delete_server, start_server
+from tkinter import messagebox, ttk, Tk, Canvas
 import tkinter as tk
+from resource_path_resolver import get_resource_path
+
+# Предположим, что нужен путь к файлу 'service-types.json'
+service_types_json_path = get_resource_path()
 
 # Флаг успешной аутентификации
 authenticated = False
@@ -10,7 +14,6 @@ def show_main_window(root):
     # Создаем меню для выбора конфигурации и образов сервера и другие элементы интерфейса
     create_configuration_menu(root)
     create_image_menu(root)
-    create_status_label(root)
     create_create_button(root)
 
 # Создание меню выбора конфигурации сервера
@@ -55,16 +58,31 @@ def create_image_menu(root):
     image_menu = ttk.OptionMenu(root, image_var, *images_dict.keys())
     image_menu.pack(pady=5)
 
-def create_status_label(root):
-    # Создаем метку без текста, которая может быть использована для отображения статусных сообщений
-    status_label = ttk.Label(root, text="")
-    status_label.pack(pady=20)
+def update_status_label(status_label, server_id):
+    try:
+        status = check_server_status(server_id)
+        if status == "ACTIVE":
+            color = "green"
+        elif status == "ERROR":
+            color = "red"
+        elif status == "SHUTOFF":
+            color = "gray"
+        else:
+            color = "yellow"
+
+        status_label.itemconfig(1, fill=color)
+        after_id = status_label.after(3000, update_status_label, status_label, server_id)
+        if not hasattr(status_label, 'after_ids'):
+            status_label.after_ids = []
+        status_label.after_ids.append(after_id)
+    except Exception as e:
+        print(f"Произошла ошибка при проверке статуса сервера: {e}")
+
 
 def create_create_button(root):
     # Создаем кнопку "Создать сервер", при нажатии на которую будет вызвана функция show_server_window
     create_button = ttk.Button(root, text="Создать сервер", command=lambda: show_server_window(root, configuration_var.get(), image_var.get()))
     create_button.pack(pady=10)
-
 
 
 def show_server_window(root, selected_configuration_name, selected_image_name):
@@ -88,7 +106,7 @@ def show_server_window(root, selected_configuration_name, selected_image_name):
         root.destroy()
         # Создание нового окна для управления сервером
         server_window = Tk()
-        server_window.geometry("610x310")
+        server_window.geometry("610x350")
         server_window.title("Управление сервером")
 
         # Настройка стилей элементов интерфейса
@@ -114,14 +132,21 @@ def show_server_window(root, selected_configuration_name, selected_image_name):
         instructions_label.pack(pady=10)
 
         # Создание и размещение кнопок для управления состоянием сервера (удаление, выключение)
-        status_label = ttk.Label(server_info_frame, text="Статус сервера", style='My.TLabel')
+        status_label = Canvas(server_info_frame, width=20, height=20)
         status_label.pack(side='top', pady=10)
-        delete_button = ttk.Button(server_info_frame, text="Удалить сервер", style='My.TButton',
-                                   command=lambda: delete_server_and_check_status_gui(server_id, server_info_frame))
-        delete_button.pack(side='bottom', pady=10, fill='x')
+        status_label.create_oval(2, 2, 18, 18, fill="yellow")  # Начальный цвет - жёлтый
+        update_status_label(status_label, server_id)
+        server_info_frame.status_label = status_label  # Сохраняем ссылку на status_label в server_info_frame
+
+        start_button = ttk.Button(server_info_frame, text="Включить сервер", style='My.TButton',
+                                  command=lambda: start_server_and_check_status_gui(server_id, server_info_frame))
+        start_button.pack(side='top', pady=10, fill='x')
         stop_button = ttk.Button(server_info_frame, text="Выключить сервер", style='My.TButton',
                                  command=lambda: stop_server_and_check_status_gui(server_id, status_label))
-        stop_button.pack(side='bottom', pady=10, fill='x')
+        stop_button.pack(side='top', pady=10, fill='x')
+        delete_button = ttk.Button(server_info_frame, text="Удалить сервер", style='My.TButton',
+                                   command=lambda: delete_server_and_check_status_gui(server_id, server_info_frame))
+        delete_button.pack(side='top', pady=10, fill='x')
 
         # Запуск главного цикла обработки событий интерфейса
         server_window.mainloop()
@@ -129,29 +154,26 @@ def show_server_window(root, selected_configuration_name, selected_image_name):
         # Если сервер создать не удалось, показываем сообщение об ошибке
         messagebox.showerror("Ошибка", "Не удалось создать сервер.")
 
-
-
-def stop_server_and_check_status_gui(server_id, server_info_frame):
-    # Создаем метку в интерфейсе для информирования пользователя о начале процесса выключения сервера
-    stop_status_label = ttk.Label(server_info_frame, text="Выключение сервера...", style='My.TLabel')
-    stop_status_label.pack(side='bottom', pady=10)
-
-    # Проверяем текущий статус сервера
+def stop_server_and_check_status_gui(server_id, status_label):
     status = check_server_status(server_id)
-    if status == "SHUTOFF":
-        # Если сервер уже выключен, информируем пользователя и удаляем метку статуса
-        messagebox.showinfo("Информация", "Сервер уже выключен.")
-        stop_status_label.destroy()
-    elif status == "ACTIVE":
-        # Если сервер активен, запускаем процедуру его выключения
+    if status == "ACTIVE":
+        messagebox.showinfo("Информация", "Сервер выключается...")
         stop_server(server_id)
-        # Запланировать проверку статуса сервера через 5 секунд
-        server_info_frame.after(5000, lambda: verify_stop_gui(server_id, stop_status_label))
+        status_label.after(5000, lambda: verify_stop_gui(server_id, status_label))
+    elif status == "SHUTOFF":
+        messagebox.showinfo("Сервер выключен", "Сервер успешно выключен.")
     else:
-        # Если сервер находится в промежуточном состоянии (например, еще создается),
-        # информируем пользователя и удаляем метку статуса
-        messagebox.showinfo("Информация", "Сервер ещё создаётся или находится в промежуточном состоянии.")
-        stop_status_label.destroy()
+        messagebox.showinfo("Информация", "Сервер все еще выключается.")
+        status_label.after(20000, lambda: verify_stop_gui(server_id, status_label))
+
+def verify_stop_gui(server_id, status_label):
+    final_status = check_server_status(server_id)
+    if final_status == "SHUTOFF":
+        messagebox.showinfo("Сервер выключен", "Сервер успешно выключен.")
+    else:
+        messagebox.showinfo("Информация", "Сервер все еще выключается.")
+        status_label.after(20000, lambda: verify_stop_gui(server_id, status_label))
+
 
 def delete_server_and_check_status_gui(server_id, server_info_frame):
     # Проверяем текущий статус сервера перед попыткой его удаления
@@ -161,13 +183,19 @@ def delete_server_and_check_status_gui(server_id, server_info_frame):
         if delete_server(server_id):
             # Успешное удаление сервера
             messagebox.showinfo("Информация", "Сервер успешно удален.")
+
+            # Отменяем запланированные вызовы update_status_label
+            if hasattr(server_info_frame, 'status_label') and hasattr(server_info_frame.status_label, 'after_ids'):
+                for after_id in server_info_frame.status_label.after_ids:
+                    server_info_frame.status_label.after_cancel(after_id)
+
             # Закрываем окно управления сервером и возвращаем пользователя к главному окну приложения
-            server_info_frame.master.destroy()
-            new_root = tk.Tk()
-            new_root.geometry("300x300")
-            new_root.title("OpenStack Управление")
-            show_main_window(new_root)
-            new_root.mainloop()
+            server_window = server_info_frame.master
+            server_window.destroy()
+            root = tk.Tk()
+            root.geometry("300x300")
+            root.title("OpenStack Управление")
+            show_main_window(root)
         else:
             # Не удалось удалить сервер
             messagebox.showerror("Ошибка", "Не удалось удалить сервер.")
@@ -175,16 +203,25 @@ def delete_server_and_check_status_gui(server_id, server_info_frame):
         # Сервер находится в промежуточном состоянии, невозможно удалить
         messagebox.showinfo("Информация", "Сервер ещё создаётся или находится в промежуточном состоянии.")
 
-def verify_stop_gui(server_id, stop_status_label):
-    # Повторная проверка статуса сервера после попытки его выключить
-    final_status = check_server_status(server_id)
-    if final_status == "SHUTOFF":
-        # Сервер успешно выключен
-        messagebox.showinfo("Сервер выключен", "Сервер успешно выключен.")
+def start_server_and_check_status_gui(server_id, server_info_frame):
+    status = check_server_status(server_id)
+    if status == "ACTIVE":
+        messagebox.showinfo("Информация", "Сервер уже работает.")
+    elif status == "SHUTOFF":
+        messagebox.showinfo("Информация", "Включение сервера...")
+        start_status_label = ttk.Label(server_info_frame, text="Включение сервера...", style='My.TLabel')
+        start_status_label.pack(side='bottom', pady=10)
+        start_server(server_id)
+        server_info_frame.after(5000, lambda: verify_start_gui(server_id, start_status_label))
     else:
-        # Сервер все еще выключается
-        messagebox.showinfo("Информация", "Сервер все еще выключается.")
+        messagebox.showinfo("Информация", f"Сервер находится в состоянии {status}. Подождите завершения текущего процесса.")
 
-    # Удаление метки статуса независимо от результата
-    stop_status_label.destroy()
+def verify_start_gui(server_id, start_status_label):
+    status = check_server_status(server_id)
+    if status == "ACTIVE":
+        messagebox.showinfo("Информация", "Сервер успешно запущен.")
+        start_status_label.destroy()
+    else:
+        messagebox.showinfo("Информация", f"Сервер ещё включается")
+        start_status_label.after(25000, lambda: verify_start_gui(server_id, start_status_label))
 

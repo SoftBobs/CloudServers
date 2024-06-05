@@ -1,7 +1,10 @@
 from openstack import connection
 import configparser
 import pymysql
+from resource_path_resolver import get_resource_path
 
+# Предположим, что нужен путь к файлу 'service-types.json'
+service_types_json_path = get_resource_path()
 
 # Функция для подключения к базе данных MySQL
 def db_connect():

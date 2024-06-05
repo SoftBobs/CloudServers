@@ -1,6 +1,9 @@
 import random
 import string
 from auth import openstack_auth, db_connect
+from resource_path_resolver import get_resource_path
+
+service_types_json_path = get_resource_path()
 
 def get_images():
     # Установление соединения с базой данных
@@ -80,7 +83,7 @@ def create_server(flavor_id, image_id):
             "source_type": "image",
             "destination_type": "volume",
             "boot_index": 0,
-            "volume_size": "80",  # Размер виртуального диска в гигабайтах
+            "volume_size": "100",  # Размер виртуального диска в гигабайтах
             "delete_on_termination": True  # Удаление диска при удалении сервера
         }],
         'terminate_on_shutdown': True  # Автоматическое удаление сервера при выключении
@@ -144,6 +147,30 @@ def stop_server(server_id):
     except Exception as e:
         # Обработка возможных исключений и вывод сообщения об ошибке
         print(f"Произошла ошибка при остановке сервера: {e}")
+
+def start_server(server_id):
+    try:
+        # Аутентификация в OpenStack для получения соединения
+        conn = openstack_auth()
+        if conn is not None:
+            # Проверка состояния сервера перед его запуском
+            server = conn.compute.get_server(server_id)
+            if server.status == "SHUTOFF":
+                # Запуск сервера по его идентификатору
+                conn.compute.start_server(server_id)
+                print("Сервер включается.")
+            elif server.status == "ACTIVE":
+                print("Сервер уже работает.")
+            elif server.status == "ERROR":
+                print("Сервер в состоянии ошибки. Попробуйте перезапустить.")
+            else:
+                print(f"Сервер находится в состоянии {server.status}.")
+        else:
+            # Сообщение об ошибке, если не удалось установить соединение
+            print("Не удалось установить подключение к OpenStack.")
+    except Exception as e:
+        # Обработка возможных исключений и вывод сообщения об ошибке
+        print(f"Произошла ошибка при запуске сервера: {e}")
 
 def check_server_status(server_id):
     try:

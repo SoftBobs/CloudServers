@@ -3,6 +3,13 @@ from tkinter import ttk
 from tkinter import messagebox
 from UIComponents import show_main_window
 from auth import authenticate_user
+from resource_path_resolver import get_resource_path
+
+# Предположим, что вам нужен путь к файлу 'service-types.json'
+service_types_json_path = get_resource_path()
+
+resource_file_path = get_resource_path()
+print(f"Путь к ресурсному файлу: {resource_file_path}")
 
 # Функция для обработки аутентификации пользователя
 def handle_authentication():
